@@ -1446,7 +1446,7 @@ spec:
         {{- include "stackstorm-ha.st2-config-volume" . | nindent 8 }}
         - name: st2-ssh-key-vol
           secret:
-            secretName: {{ .Release.Name }}-st2-ssh
+            secretName: {{ include "stackstorm-ha.secrets.st2ssh" . }}
             items:
             - key: private_key
               path: {{ tpl .Values.st2.system_user.ssh_key_file . | base }}
@@ -1746,7 +1746,7 @@ spec:
             medium: Memory
         - name: st2-ssh-key-vol
           secret:
-            secretName: {{ .Release.Name }}-st2-ssh
+            secretName: {{ include "stackstorm-ha.secrets.st2ssh" . }}
             items:
             - key: private_key
               path: {{ tpl .Values.st2.system_user.ssh_key_file . | base }}

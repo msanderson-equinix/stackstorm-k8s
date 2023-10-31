@@ -79,6 +79,14 @@ Create the name of the stackstorm-ha st2 auth secret to use
 {{- end -}}
 
 {{/*
+Create the name of the stackstorm-ha st2 ssh secret to use
+*/}}
+{{- define "stackstorm-ha.secrets.st2ssh" -}}
+{{- $name := print .Release.Name "-st2-ssh" -}}
+{{- default $name .Values.st2.existingSSHPrivateKeySecret -}}
+{{- end -}}
+
+{{/*
 Create the name of the stackstorm-ha st2 datastore secret to use
 */}}
 {{- define "stackstorm-ha.secrets.st2Datastore" -}}
