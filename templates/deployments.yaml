@@ -28,7 +28,9 @@ spec:
       labels: {{- include "stackstorm-ha.labels" (list $ "st2auth") | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
+        {{- if not .Values.st2.existingAuthSecret }}
         checksum/auth: {{ include (print $.Template.BasePath "/secrets_st2auth.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.st2auth.postStartScript }}
         checksum/post-start-script: {{ .Values.st2auth.postStartScript | sha256sum }}
         {{- end }}
@@ -36,8 +38,8 @@ spec:
           {{- toYaml .Values.st2auth.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -60,6 +62,7 @@ spec:
           - 'sh'
           - '-ec'
           - printf "${ST2_AUTH_USERNAME}:$(openssl passwd -apr1 "${ST2_AUTH_PASSWORD}")\n" > /tmp/st2/htpasswd
+      terminationGracePeriodSeconds: {{ .Values.st2auth.terminationGracePeriodSeconds | default 30 }}
       containers:
       - name: st2auth
         image: '{{ template "stackstorm-ha.imageRepository" . }}/st2auth:{{ tpl (.Values.st2auth.image.tag | default .Values.image.tag) . }}'
@@ -73,6 +76,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2auth
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2auth.env }}
@@ -96,6 +100,13 @@ spec:
           mountPath: /post-start.sh
           subPath: post-start.sh
         lifecycle:
+          {{- if .Values.st2auth.preStopSleep | toString | ne "0" }}
+          preStop:
+            exec: # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+              # kubeproxy and kubelet both race  
+              # wait a bit to ensure kubeproxy has removed the iptables rule.
+              command: [ "sleep", "{{ .Values.st2auth.preStopSleep | toString }}" ]
+          {{- end }}
           postStart:
             exec:
               command: ["/bin/bash", "/post-start.sh"]
@@ -158,7 +169,9 @@ spec:
       labels: {{- include "stackstorm-ha.labels" (list $ "st2api") | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
+        {{- if and (ne "disable" (default "" .Values.st2.datastore_crypto_key)) (not .Values.st2.existingDatastoreSecret) }}
         checksum/datastore-key: {{ include (print $.Template.BasePath "/secrets_datastore_crypto_key.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.st2api.postStartScript }}
         checksum/post-start-script: {{ .Values.st2api.postStartScript | sha256sum }}
         {{- end }}
@@ -166,8 +179,8 @@ spec:
           {{- toYaml .Values.st2api.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       {{- if .Values.st2.packs.images }}
@@ -179,6 +192,7 @@ spec:
       {{- if and .Values.st2.packs.images (not .Values.st2.packs.volumes.enabled) }}
         {{- include "stackstorm-ha.packs-initContainers" . | nindent 6 }}
       {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.st2api.terminationGracePeriodSeconds | default 30 }}
       containers:
       - name: st2api
         image: '{{ template "stackstorm-ha.imageRepository" . }}/st2api:{{ tpl (.Values.st2api.image.tag | default .Values.image.tag) . }}'
@@ -192,6 +206,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2api
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2api.env }}
@@ -220,6 +235,13 @@ spec:
           mountPath: /post-start.sh
           subPath: post-start.sh
         lifecycle:
+          {{- if .Values.st2api.preStopSleep | toString | ne "0" }}
+          preStop:
+            exec: # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+              # kubeproxy and kubelet both race  
+              # wait a bit to ensure kubeproxy has removed the iptables rule.
+              command: [ "sleep", "{{ .Values.st2api.preStopSleep | toString }}" ]
+          {{- end }}
           postStart:
             exec:
               command: ["/bin/bash", "/post-start.sh"]
@@ -298,13 +320,14 @@ spec:
           {{- toYaml .Values.st2stream.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
       {{- include "stackstorm-ha.init-containers-wait-for-db" . | nindent 6 }}
       {{- include "stackstorm-ha.init-containers-wait-for-mq" . | nindent 6 }}
+      terminationGracePeriodSeconds: {{ .Values.st2stream.terminationGracePeriodSeconds | default 30 }}
       containers:
       - name: st2stream
         image: '{{ template "stackstorm-ha.imageRepository" . }}/st2stream:{{ tpl (.Values.st2stream.image.tag | default .Values.image.tag) . }}'
@@ -318,6 +341,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2stream
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2stream.env }}
@@ -337,6 +361,13 @@ spec:
           mountPath: /post-start.sh
           subPath: post-start.sh
         lifecycle:
+          {{- if .Values.st2stream.preStopSleep | toString | ne "0" }}
+          preStop:
+            exec: # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+              # kubeproxy and kubelet both race  
+              # wait a bit to ensure kubeproxy has removed the iptables rule.
+              command: [ "sleep", "{{ .Values.st2stream.preStopSleep | toString }}" ]
+          {{- end }}
           postStart:
             exec:
               command: ["/bin/bash", "/post-start.sh"]
@@ -401,15 +432,16 @@ spec:
           {{- toYaml .Values.st2web.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.st2web.terminationGracePeriodSeconds | default 30 }}
       containers:
       - name: st2web
         image: '{{ template "stackstorm-ha.imageRepository" . }}/st2web:{{ tpl (.Values.st2web.image.tag | default .Values.image.tag) . }}'
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        {{- with default .Values.securityContext .Values.st2web.securityContext }}
+        {{- with .Values.st2web.securityContext | default .Values.securityContext }}
         securityContext: {{- toYaml . | nindent 10 }}
         {{- end }}
         ports:
@@ -457,6 +489,13 @@ spec:
             mountPath: /post-start.sh
             subPath: post-start.sh
         lifecycle:
+          {{- if .Values.st2web.preStopSleep | toString | ne "0" }}
+          preStop:
+            exec: # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+              # kubeproxy and kubelet both race  
+              # wait a bit to ensure kubeproxy has removed the iptables rule.
+              command: [ "sleep", "{{ .Values.st2web.preStopSleep | toString }}" ]
+          {{- end }}
           postStart:
             exec:
               command: ["/bin/bash", "/post-start.sh"]
@@ -491,7 +530,7 @@ spec:
     {{- with .Values.dnsConfig }}
       dnsConfig: {{- toYaml . | nindent 8 }}
     {{- end }}
-    {{- with default .Values.podSecurityContext .Values.st2client.podSecurityContext }}
+    {{- with .Values.st2web.podSecurityContext | default .Values.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
     {{- end }}
     {{- with .Values.st2web.nodeSelector }}
@@ -524,7 +563,9 @@ spec:
       labels: {{- include "stackstorm-ha.labels" (list $ "st2rulesengine") | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
+        {{- if and (ne "disable" (default "" .Values.st2.datastore_crypto_key)) (not .Values.st2.existingDatastoreSecret) }}
         checksum/datastore-key: {{ include (print $.Template.BasePath "/secrets_datastore_crypto_key.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.st2rulesengine.postStartScript }}
         checksum/post-start-script: {{ .Values.st2rulesengine.postStartScript | sha256sum }}
         {{- end }}
@@ -532,8 +573,8 @@ spec:
           {{- toYaml .Values.st2rulesengine.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -550,6 +591,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2rulesengine
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2rulesengine.env }}
@@ -649,8 +691,8 @@ spec:
           {{- toYaml .Values.st2timersengine.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -667,6 +709,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2timersengine
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2timersengine.env }}
@@ -745,7 +788,9 @@ spec:
       labels: {{- include "stackstorm-ha.labels" (list $ "st2workflowengine") | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
+        {{- if and (ne "disable" (default "" .Values.st2.datastore_crypto_key)) (not .Values.st2.existingDatastoreSecret) }}
         checksum/datastore-key: {{ include (print $.Template.BasePath "/secrets_datastore_crypto_key.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.st2workflowengine.postStartScript }}
         checksum/post-start-script: {{ .Values.st2workflowengine.postStartScript | sha256sum }}
         {{- end }}
@@ -753,8 +798,9 @@ spec:
           {{- toYaml .Values.st2workflowengine.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
+      terminationGracePeriodSeconds: {{ .Values.st2workflowengine.terminationGracePeriodSeconds | default 300 }}
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -771,6 +817,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2workflowengine
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2workflowengine.env }}
@@ -861,7 +908,9 @@ spec:
       labels: {{- include "stackstorm-ha.labels" (list $ "st2scheduler") | nindent 8 }}
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
+        {{- if and (ne "disable" (default "" .Values.st2.datastore_crypto_key)) (not .Values.st2.existingDatastoreSecret) }}
         checksum/datastore-key: {{ include (print $.Template.BasePath "/secrets_datastore_crypto_key.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.st2scheduler.postStartScript }}
         checksum/post-start-script: {{ .Values.st2scheduler.postStartScript | sha256sum }}
         {{- end }}
@@ -869,8 +918,8 @@ spec:
           {{- toYaml .Values.st2scheduler.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -887,6 +936,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2scheduler
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2scheduler.env }}
@@ -985,8 +1035,8 @@ spec:
           {{- toYaml .Values.st2notifier.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -1003,6 +1053,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2notifier
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2notifier.env }}
@@ -1112,7 +1163,9 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") $ | sha256sum }}
         checksum/packs: {{ include (print $.Template.BasePath "/configmaps_packs.yaml") $ | sha256sum }}
+        {{- if and (ne "disable" (default "" $.Values.st2.datastore_crypto_key)) (not $.Values.st2.existingDatastoreSecret) }}
         checksum/datastore-key: {{ include (print $.Template.BasePath "/secrets_datastore_crypto_key.yaml") $ | sha256sum }}
+        {{- end }}
         {{- if $.Values.st2sensorcontainer.postStartScript }}
         checksum/post-start-script: {{ $.Values.st2sensorcontainer.postStartScript | sha256sum }}
         {{- end }}
@@ -1128,8 +1181,8 @@ spec:
           {{- toYaml $sensor.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if $.Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ $.Values.image.pullSecret }}
       {{- end }}
       {{- if $.Values.st2.packs.images }}
@@ -1139,6 +1192,7 @@ spec:
       {{- if $some_sensors_per_pod }}
       - name: {{ $name }}-init-config
         image: '{{ template "stackstorm-ha.utilityImage" $ }}'
+        imagePullPolicy: {{ $.Values.image.pullPolicy }}
         volumeMounts:
         - name: st2-sensor-config-vol
           mountPath: /tmp/st2
@@ -1162,7 +1216,7 @@ spec:
       - name: {{ $name }}
         image: '{{ template "stackstorm-ha.imageRepository" $ }}/st2sensorcontainer:{{ tpl ($sensor.image.tag | default $.Values.image.tag) $ }}'
         imagePullPolicy: {{ $.Values.image.pullPolicy }}
-        {{- with default $.Values.securityContext $sensor.securityContext }}
+        {{- with $sensor.securityContext | default $.Values.securityContext }}
         securityContext: {{- toYaml . | nindent 10 }}
         {{- end }}
         {{- with $sensor.readinessProbe }}
@@ -1175,6 +1229,7 @@ spec:
           {{- toYaml . | nindent 10 }}
         {{- end }}
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2sensorcontainer
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
           {{- if $one_sensor_per_pod }}{{/* only in st2.packs.sensors[] */}}
@@ -1257,7 +1312,7 @@ spec:
     {{- with $.Values.dnsConfig }}
       dnsConfig: {{- toYaml . | nindent 8 }}
     {{- end }}
-    {{- with default $.Values.podSecurityContext $sensor.podSecurityContext }}
+    {{- with $sensor.podSecurityContext | default $.Values.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
     {{- end }}
     {{- with $sensor.nodeSelector }}
@@ -1293,7 +1348,9 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
         checksum/ssh: {{ include (print $.Template.BasePath "/secrets_ssh.yaml") . | sha256sum }}
+        {{- if and (ne "disable" (default "" .Values.st2.datastore_crypto_key)) (not .Values.st2.existingDatastoreSecret) }}
         checksum/datastore-key: {{ include (print $.Template.BasePath "/secrets_datastore_crypto_key.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.st2actionrunner.postStartScript }}
         checksum/post-start-script: {{ .Values.st2actionrunner.postStartScript | sha256sum }}
         {{- end }}
@@ -1305,8 +1362,8 @@ spec:
       hostAliases:
         {{- toYaml .Values.st2actionrunner.hostAliases | nindent 8 }}
       {{- end }}
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       {{- if .Values.st2.packs.images }}
@@ -1321,19 +1378,21 @@ spec:
       {{- if and .Values.st2.packs.images (not .Values.st2.packs.volumes.enabled) }}
         {{- include "stackstorm-ha.packs-initContainers" . | nindent 6 }}
       {{- end }}
+      terminationGracePeriodSeconds: {{ .Values.st2actionrunner.terminationGracePeriodSeconds | default 300 }}
       containers:
       - name: st2actionrunner
         {{- with .Values.st2actionrunner }}
         image: '{{ .image.repository | default (include "stackstorm-ha.imageRepository" $) }}/{{ .image.name | default "st2actionrunner" }}:{{ tpl (.image.tag | default $.Values.image.tag) $ }}'
         {{- end }}
         imagePullPolicy: {{ .Values.st2actionrunner.image.pullPolicy | default .Values.image.pullPolicy }}
-        {{- with default .Values.securityContext .Values.st2actionrunner.securityContext }}
+        {{- with .Values.st2actionrunner.securityContext | default .Values.securityContext }}
         securityContext: {{- toYaml . | nindent 10 }}
         {{- end }}
         # TODO: Add liveness/readiness probes (#3)
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2actionrunner
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2actionrunner.env }}
@@ -1410,7 +1469,7 @@ spec:
     {{- with .Values.dnsConfig }}
       dnsConfig: {{- toYaml . | nindent 8 }}
     {{- end }}
-    {{- with default .Values.podSecurityContext .Values.st2actionrunner.podSecurityContext }}
+    {{- with .Values.st2actionrunner.podSecurityContext | default .Values.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
     {{- end }}
     {{- with .Values.st2actionrunner.nodeSelector }}
@@ -1450,8 +1509,8 @@ spec:
           {{- toYaml .Values.st2garbagecollector.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -1468,6 +1527,7 @@ spec:
         #livenessProbe:
         #readinessProbe:
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - /opt/stackstorm/st2/bin/st2garbagecollector
           {{- include "stackstorm-ha.st2-config-file-parameters" $ | nindent 10 }}
         {{- if .Values.st2garbagecollector.env }}
@@ -1546,9 +1606,13 @@ spec:
         checksum/config: {{ include (print $.Template.BasePath "/configmaps_st2-conf.yaml") . | sha256sum }}
         checksum/rbac: {{ include (print $.Template.BasePath "/configmaps_rbac.yaml") . | sha256sum }}
         checksum/packs: {{ include (print $.Template.BasePath "/configmaps_packs.yaml") . | sha256sum }}
+        {{- if not .Values.st2.existingAuthSecret }}
         checksum/auth: {{ include (print $.Template.BasePath "/secrets_st2auth.yaml") . | sha256sum }}
+        {{- end }}
         checksum/ssh: {{ include (print $.Template.BasePath "/secrets_ssh.yaml") . | sha256sum }}
+        {{- if and (ne "disable" (default "" .Values.st2.datastore_crypto_key)) (not .Values.st2.existingDatastoreSecret) }}
         checksum/datastore-key: {{ include (print $.Template.BasePath "/secrets_datastore_crypto_key.yaml") . | sha256sum }}
+        {{- end }}
         {{- if .Values.st2.overrides }}
         checksum/overrides: {{ include (print $.Template.BasePath "/configmaps_overrides.yaml") . | sha256sum }}
         {{- end }}
@@ -1559,11 +1623,11 @@ spec:
           {{- toYaml .Values.st2client.annotations | nindent 8 }}
         {{- end }}
     spec:
-      imagePullSecrets:
       {{- if .Values.st2.packs.images }}
         {{- include "stackstorm-ha.packs-pullSecrets" . | nindent 6 }}
       {{- end }}
       {{- if .Values.image.pullSecret }}
+      imagePullSecrets:
       - name: {{ .Values.image.pullSecret }}
       {{- end }}
       initContainers:
@@ -1574,7 +1638,7 @@ spec:
       - name: generate-st2client-config
         image: '{{ template "stackstorm-ha.imageRepository" . }}/st2actionrunner:{{ tpl (.Values.st2client.image.tag | default (.Values.st2actionrunner.image.tag | default .Values.image.tag)) . }}'
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        {{- with .Values.securityContext }}
+        {{- with .Values.st2client.securityContext | default .Values.st2actionrunner.securityContext | default .Values.securityContext }}
         securityContext: {{- toYaml . | nindent 10 }}
         {{- end }}
         envFrom:
@@ -1601,7 +1665,7 @@ spec:
       - name: st2client
         image: '{{ template "stackstorm-ha.imageRepository" . }}/st2actionrunner:{{ tpl (.Values.st2client.image.tag | default .Values.image.tag) . }}'
         imagePullPolicy: {{ .Values.image.pullPolicy }}
-        {{- with default .Values.securityContext .Values.st2actionrunner.securityContext }}
+        {{- with .Values.st2client.securityContext | default .Values.st2actionrunner.securityContext | default .Values.securityContext }}
         securityContext: {{- toYaml . | nindent 10 }}
         {{- end }}
         env:
@@ -1645,6 +1709,7 @@ spec:
           mountPath: /post-start.sh
           subPath: post-start.sh
         command:
+          {{- include "stackstorm-ha.st2-entrypoint" $ | nindent 10 }}
           - 'bash'
           - '-ec'
           - 'while true; do sleep 999; done'
@@ -1702,7 +1767,7 @@ spec:
     {{- with .Values.dnsConfig }}
       dnsConfig: {{- toYaml . | nindent 8 }}
     {{- end }}
-    {{- with default .Values.podSecurityContext .Values.st2client.podSecurityContext }}
+    {{- with .Values.st2client.podSecurityContext | default .Values.st2actionrunner.podSecurityContext | default .Values.podSecurityContext }}
       securityContext: {{- toYaml . | nindent 8 }}
     {{- end }}
     {{- with .Values.st2client.nodeSelector }}

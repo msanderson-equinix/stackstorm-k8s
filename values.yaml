@@ -24,6 +24,14 @@ image:
   # May be required for public docker hub due to rate limiting or any private repository.
   # See: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
   #pullSecret: "your-pull-secret"
+  # Image entry point for st2* deployments (except st2web and st2chatops).
+  # This chart replaces the entrypoint (command+args) baked into the docker images.
+  # If you are have installed a custom init process (like dumb-init, pid1, tini or similar),
+  # in the docker image(s) you are using, you can add that entrypoint here.
+  entrypoint: []
+    # For example you could add dumb-init like this (dumb-init must be present in the image).
+    #- "/usr/bin/dumb-init"
+    #- "--"
 
 ##
 ## local cluster domain suffix to enable fqdn lookups for redis, mongo
@@ -150,6 +158,8 @@ st2:
       #  pullPolicy: IfNotPresent
       # Optional name of the imagePullSecret if your custom packs image is hosted by a private Docker registry
       #  pullSecret: st2packs-auth
+      # Optional .securityContext override for container
+      #  securityContext:
 
     # Custom packs volumes definitions.
     #
@@ -288,7 +298,7 @@ st2:
 
 ##
 ## Default SecurityContext for pods and containers.
-## Overrides available for st2web, st2actionrunner, st2sensorcontainer, and st2client pods.
+## Overrides available for st2web, st2actionrunner, st2sensorcontainer, st2client pods, and custom packs images.
 ##
 podSecurityContext: {}
 securityContext: {}
@@ -381,6 +391,10 @@ st2web:
   # The pod will not be marked as "running" until this script completes successfully.
   # see: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/
   postStartScript: ""
+  # preStopSleep works around iptables race conditions in kubeproxy and kubelet.
+  # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+  # If you use an alternative to kubeproxy, like Calico, disable this by setting it to "0".
+  preStopSleep: "10"
 
 # https://docs.stackstorm.com/reference/ha.html#st2auth
 # Multiple st2auth processes can be behind a load balancer in an active-active configuration.
@@ -416,6 +430,10 @@ st2auth:
   # The pod will not be marked as "running" until this script completes successfully.
   # see: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/
   postStartScript: ""
+  # preStopSleep works around iptables race conditions in kubeproxy and kubelet.
+  # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+  # If you use an alternative to kubeproxy, like Calico, disable this by setting it to "0".
+  preStopSleep: "10"
   # mount extra volumes on the st2auth pod(s) (primarily useful for custom logging conf)
   ## Note that Helm templating is supported in 'mount' and 'volume'
   extra_volumes: []
@@ -455,6 +473,10 @@ st2api:
   # The pod will not be marked as "running" until this script completes successfully.
   # see: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/
   postStartScript: ""
+  # preStopSleep works around iptables race conditions in kubeproxy and kubelet.
+  # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+  # If you use an alternative to kubeproxy, like Calico, disable this by setting it to "0".
+  preStopSleep: "10"
   # mount extra volumes on the st2api pod(s) (primarily useful for custom logging conf)
   ## Note that Helm templating is supported in 'mount' and 'volume'
   extra_volumes: []
@@ -494,6 +516,10 @@ st2stream:
   # The pod will not be marked as "running" until this script completes successfully.
   # see: https://kubernetes.io/docs/concepts/containers/container-lifecycle-hooks/
   postStartScript: ""
+  # preStopSleep works around iptables race conditions in kubeproxy and kubelet.
+  # https://blog.laputa.io/graceful-shutdown-in-kubernetes-85f1c8d586da
+  # If you use an alternative to kubeproxy, like Calico, disable this by setting it to "0".
+  preStopSleep: "10"
   # mount extra volumes on the st2stream pod(s) (primarily useful for custom logging conf)
   ## Note that Helm templating is supported in 'mount' and 'volume'
   extra_volumes: []
@@ -563,6 +589,8 @@ st2timersengine:
 # https://docs.stackstorm.com/reference/ha.html#st2workflowengine
 # Multiple st2workflowengine processes can run in active-active mode and will share the load and pick up more work if one or more of the processes become available.
 st2workflowengine:
+  # k8 pod timeout.  set this to a few seconds longer than st2 config workflow_engine.exit_still_active_check
+  terminationGracePeriodSeconds: 300
   replicas: 2
   resources:
     requests:
@@ -657,6 +685,9 @@ st2notifier:
 # Multiple st2actionrunner processes can run in active-active with only connections to MongoDB and RabbitMQ. Work gets naturally
 # distributed across runners via RabbitMQ. Adding more st2actionrunner processes increases the ability of StackStorm to execute actions.
 st2actionrunner:
+  # k8 pod timeout.  set this to a few seconds longer than st2 config actionrunner.exit_still_active_check and set
+  # actionrunner.graceful_shutdown = True
+  terminationGracePeriodSeconds: 300
   replicas: 5
   resources:
     requests:
@@ -694,7 +725,7 @@ st2actionrunner:
     attach: false
   # override the default .podSecurityContext or .securityContext here
   podSecurityContext: {}
-  securityContext: {}
+  securityContext: {} # also applies to init or jobs containers that copy/modify files
   # postStartScript is optional. It has the contents of a bash script.
   # k8s will run the script in the st2 container in parallel with the ENTRYPOINT.
   # The pod will not be marked as "running" until this script completes successfully.
@@ -975,6 +1006,8 @@ jobs:
     #   hook: post-install   # required "helm.sh/hook"
     #   hook_weight: 10      # optional hook_weight (defaults to 10)
     #   resources: {}        # optional definition of resources to request
+    #   podSecurityContext: {} # optional definition of pod securityContext override
+    #   securityContext: {}  # optional definition of container securityContext override
     #   command:             # required command to run
     #     - st2
     #     - run

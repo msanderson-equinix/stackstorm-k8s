@@ -1,15 +1,36 @@
 # Changelog
 
-## In Development
+## Development
+* Updated our tests/unit to support `unittests` v0.5.1 (#414, #421) (by @jk464)
+* Migrate to kubeconform for k8s linting, as kubeval is now deprecated (#420) (by @jk464)
+* Allow clusters that do not use kubeproxy to disable presleep. (#416) (by @cognifloyd)
+
+## v1.1.0
+* Fix syntax with ensure-packs-volumes-are-writable job (#403, #411) (by @skiedude)
+* Add securityContext support to custom st2packs images, extra_hooks jobs; Also fallback to st2actionrunner securityContext for misc init container jobs and pods. (#410) (by @cognifloyd)
+* Stop generating the DataStore Secret (#385) and checksum labels (#391) when existing secret provided or disabled (by @bmarick)
+* Stop generating the checksum labels for Auth Secret (#392) when existing secret provided or disabled (by @bmarick)
+* Use `image.pullPolicy` for all containers including init containers that use `image.utilityImage`. (#397) (by @jk464)
+* Add new `image.entrypoint` value to simplify using a custom entry point like `dumb-init` or `pid1` (if installed in the image). (#413) (by @cognifloyd)
+* Improve Deployments migration in `migrations/v1.0/standardize-labels.sh` by temporarily orphaning the old ReplicaSets. (#412) (by @cognifloyd)
+
+## v1.0.0
+* Bump to latest CircleCI orb versions (kubernetes@1.3.1 and helm@3.0.0 by @ZoeLeah)
+* Remove unsupported k8s Versions (1.24.x and 1.25.x by @ZoeLeah)
+* Update and add new K8s versions (1.28.3, 1.27.7 and 1.26.10 by @ZoeLeah)
+* Switch from ubuntu-2204:2022.10.2 to ubuntu-2204:current (by @ZoeLeah)
+* Update K3s to v1.28.3+k3s1 (by @ZoeLeah)
+* Increase helm install timeout to 15 minutes (by @ZoeLeah)
 * Shift K3s and K8s versions forward. (by @mamercad)
 * BREAKING: Use the standardized labels recommended in the Helm docs. You can use `migrations/v1.0/standardize-labels.sh` to prepare an existing cluster before running `helm update`. (#351) (by @cognifloyd)
 * Drop support for `networking.k8s.io/v1beta1` which was removed in kubernetes v1.22 (EOL 2022-10-28) (#353) (by @cognifloyd)
 * Reduce duplication in label tests (#354) (by @cognifloyd)
 * Add `st2canary` job as a Helm Hook that runs before install/upgrade to ensure `st2.packs.volumes` is configured correctly (if `st2.packs.volumes.enabled`). (#323) (by @cognifloyd)
 * Enable using existing `st2-auth` secret. This allows users to manage this secret outside of the Helm process. (#359) (by @bmarick)
+* Add terminationGracePeriodSeconds to workflow and actionrunner pods to allow adjustment of grace period in k8 (#374) (by @guzzijones12)
+* Fix st2 client config issue affecting addon jobs using jobs.extra_hooks (#371) (by @cars)
 * Prevent duplicate init containers on helm upgrade (#375) (by @guzzijones12)
-* Fix st2 client config issue affecting addon jobs using jobs.extra_hooks (#370) (by @cars)
-
+* Workaround kubeproxy+kubelet race: Add presleep for st2auth, st2web, st2api, st2stream (#382) (by @guzzijones12)
 
 ## v0.110.0
 * Switch st2 to `v3.8` as a new default stable version (#347)

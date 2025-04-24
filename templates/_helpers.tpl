@@ -181,6 +181,12 @@ Reduce duplication of the st2.*.conf volume details
 {{- end }}
 {{- end -}}
 
+{{- define "stackstorm-ha.st2-entrypoint" -}}
+  {{- range $.Values.image.entrypoint }}
+- {{ toYaml . }}
+  {{- end }}
+{{- end -}}
+
 # Override CMD CLI parameters passed to the startup of all pods to add support for /etc/st2/st2.secrets.conf
 {{- define "stackstorm-ha.st2-config-file-parameters" -}}
 - --config-file=/etc/st2/st2.conf
@@ -196,6 +202,7 @@ Reduce duplication of the st2.*.conf volume details
 {{- $mongodb_port := (int (index .Values "mongodb" "service" "port")) }}
 - name: wait-for-db
   image: {{ template "stackstorm-ha.utilityImage" . }}
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
   command:
     - 'sh'
     - '-c'
@@ -216,6 +223,7 @@ Reduce duplication of the st2.*.conf volume details
     {{- $rabbitmq_port := (int (index .Values "rabbitmq" "service" "port")) }}
 - name: wait-for-queue
   image: {{ template "stackstorm-ha.utilityImage" . }}
+  imagePullPolicy: {{ .Values.image.pullPolicy }}
   command:
     - 'sh'
     - '-c'
@@ -344,7 +352,8 @@ Merge packs and virtualenvs from st2 with those from st2packs images
     - |
       /bin/cp -aR /opt/stackstorm/packs/. /opt/stackstorm/packs-shared &&
       /bin/cp -aR /opt/stackstorm/virtualenvs/. /opt/stackstorm/virtualenvs-shared
-  {{- with $.Values.securityContext }}
+  {{- with .securityContext | default $.Values.st2actionrunner.securityContext | default $.Values.securityContext }}
+  {{/* st2actionrunner is likely the most permissive so use that if defined. */}}
   securityContext: {{- toYaml . | nindent 8 }}
   {{- end }}
     {{- end }}
@@ -365,7 +374,8 @@ Merge packs and virtualenvs from st2 with those from st2packs images
     - |
       /bin/cp -aR /opt/stackstorm/packs/. /opt/stackstorm/packs-shared &&
       /bin/cp -aR /opt/stackstorm/virtualenvs/. /opt/stackstorm/virtualenvs-shared
-  {{- with .Values.securityContext }}
+  {{- with .Values.st2actionrunner.securityContext | default .Values.securityContext }}
+  {{/* st2actionrunner is likely the most permissive so use that if defined. */}}
   securityContext: {{- toYaml . | nindent 8 }}
   {{- end }}
   {{- end }}
@@ -384,7 +394,8 @@ Merge packs and virtualenvs from st2 with those from st2packs images
     - '-ec'
     - |
       /bin/cp -aR /opt/stackstorm/configs/. /opt/stackstorm/configs-shared
-  {{- with .Values.securityContext }}
+  {{- with .Values.st2actionrunner.securityContext | default .Values.securityContext }}
+  {{/* st2actionrunner is likely the most permissive so use that if defined. */}}
   securityContext: {{- toYaml . | nindent 8 }}
   {{- end }}
   {{- end }}
