@@ -32,9 +32,6 @@
 * Prevent duplicate init containers on helm upgrade (#375) (by @guzzijones12)
 * Workaround kubeproxy+kubelet race: Add presleep for st2auth, st2web, st2api, st2stream (#382) (by @guzzijones12)
 
-## v0.110.1 Equinix Changes
-* Add ability to use existing secret for ssh private key. Limitations are that secret must be named <namespace>-st2-ssh with key "private_key".
-
 ## v0.110.0
 * Switch st2 to `v3.8` as a new default stable version (#347)
 * Cover the three most recent Kubernetes versions in Minikube and the single most recent in K3s. (#342) (by @mamercad)
